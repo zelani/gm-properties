@@ -67,7 +67,9 @@ export default function PushNotifyPanel({ projectId, flats = [], isAdmin }) {
       }
 
       const snap   = await getDocs(tokenQuery)
-      const tokens = snap.docs.map(d => d.data().token).filter(Boolean)
+      const tokens = snap.docs
+        .map(d => ({ token: d.data().token, tokenType: d.data().tokenType || 'fcm' }))
+        .filter(t => t.token)
 
       if (tokens.length === 0) {
         setResult({ sent: 0, failed: 0, message: 'No devices registered for push notifications in this selection.' })
