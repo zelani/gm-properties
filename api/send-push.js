@@ -3,7 +3,7 @@ import { GoogleAuth } from 'google-auth-library'
 import webpush        from 'web-push'
 
 const PROJECT_ID    = 'gm-properties-amir'
-const VAPID_PUBLIC  = 'BH0WqwsibHm1EvNWi99ZxO8CEYmgWTRxrkIXGbT2xzfG2OLrz9MCj8p-7YG1Kuqqi69PBB-yGIRPSnhs_i91y_g'
+const VAPID_PUBLIC = 'BDTYvV9mFC8jmkWScU4y2H11Fs02AteyTMdw6nZ33xaVDTSOu2_c3byoSyul6NMZKg0NilvIioOfhQKLk8h8vt4'
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY
 
 async function getAccessToken() {
