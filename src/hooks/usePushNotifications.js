@@ -47,10 +47,27 @@ async function saveFCMToken(uid, token, projectId, flatNumber, role, tokenType =
   }
 }
 
+const PERM_KEY = 'gm_notif_permission'
+
 export function usePushNotifications({ uid, projectId, flatNumber, role }) {
-  const [permission,   setPermission]   = useState(
-    typeof Notification !== 'undefined' ? Notification.permission : 'denied'
-  )
+  // Read from Notification API first, fall back to localStorage for Safari PWA
+  // Safari PWA sometimes resets Notification.permission to 'default' on reopen
+  const [permission, setPermission] = useState(() => {
+    if (typeof Notification !== 'undefined') {
+      const live = Notification.permission
+      // If browser says 'granted' or 'denied' — trust it and update localStorage
+      if (live !== 'default') {
+        try { localStorage.setItem(PERM_KEY, live) } catch {}
+        return live
+      }
+    }
+    // Browser says 'default' — check localStorage for previous grant
+    try {
+      const saved = localStorage.getItem(PERM_KEY)
+      if (saved === 'granted') return 'granted'  // Safari PWA reopen bug — was previously granted
+    } catch {}
+    return typeof Notification !== 'undefined' ? Notification.permission : 'denied'
+  })
   const [token,        setToken]        = useState(null)
   const [notification, setNotification] = useState(null)
   const [loading,      setLoading]      = useState(false)
@@ -67,6 +84,7 @@ export function usePushNotifications({ uid, projectId, flatNumber, role }) {
     try {
       const result = await Notification.requestPermission()
       setPermission(result)
+      try { localStorage.setItem(PERM_KEY, result) } catch {}
       setDebugMsg('Permission: ' + result)
 
       if (result !== 'granted') {
@@ -140,9 +158,13 @@ export function usePushNotifications({ uid, projectId, flatNumber, role }) {
   }, [uid, projectId, flatNumber, role])
 
   // Auto-request if already granted on mount
+  // This also handles Safari PWA reopen where Notification.permission resets to 'default'
   useEffect(() => {
     if (!uid) return
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    const livePermission = typeof Notification !== 'undefined' ? Notification.permission : 'denied'
+    const savedPermission = (() => { try { return localStorage.getItem(PERM_KEY) } catch { return null } })()
+    // Re-request (which re-saves the token) if permission is granted at any level
+    if (livePermission === 'granted' || savedPermission === 'granted') {
       requestPermission()
     }
   }, [uid])
