@@ -17,14 +17,14 @@ export default function Dashboard() {
   // Push notifications — fully safe, never crashes Dashboard
   let pushState = {
     permission: 'default', notification: null, loading: false,
-    requestPermission: async () => {}, setNotification: () => {},
+    requestPermission: async () => {}, setNotification: () => {}, debugMsg: '',
   }
   try {
     pushState = usePushNotifications({ uid: user?.uid, projectId, flatNumber, role })
   } catch (e) {
     console.warn('[Push] non-fatal:', e)
   }
-  const { permission, notification, loading: notifLoading, requestPermission, setNotification } = pushState
+  const { permission, notification, loading: notifLoading, requestPermission, setNotification, debugMsg } = pushState
 
   return (
     <div>
@@ -71,6 +71,7 @@ export default function Dashboard() {
               <p className="text-purple-200 text-xs mt-0.5">
                 Get alerts for payment updates, meetings and notices — even when the app is closed
               </p>
+              {debugMsg ? <p className="text-purple-300 text-xs mt-1 font-mono break-all">{debugMsg}</p> : null}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">

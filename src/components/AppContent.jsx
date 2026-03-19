@@ -5,6 +5,7 @@ import { Home, Plus, Trash2, Edit2, Share2, Download, Settings, Upload, CreditCa
 import { LineChart, Line, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, BarChart, Bar } from "recharts";
 import { useEscalation } from "../hooks/useEscalation";
 import EscalationPanel   from "./EscalationPanel";
+import PushNotifyPanel   from "./PushNotifyPanel";
 
 
 
@@ -1998,6 +1999,7 @@ function NotificationsPage({db, projectId, setView, navView, isAdmin, role, data
   const [loading,setLoading]=useState(true);
   const [showCompose,setShowCompose]=useState(false);
   const [showSendStatus,setShowSendStatus]=useState(false);
+  const [showPush,setShowPush]=useState(false);
   const [sending,setSending]=useState(false);
   const [form,setForm]=useState({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"whatsapp"});
   const [preview,setPreview]=useState("");
@@ -2066,14 +2068,36 @@ function NotificationsPage({db, projectId, setView, navView, isAdmin, role, data
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-5">
         {isAdmin&&(
           <div className="flex gap-3 flex-wrap">
-            {/* PRIMARY: Send Status button */}
+            {/* Push notification — in-app */}
+            <button onClick={()=>{setShowPush(!showPush);setShowCompose(false);}} className={"flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all "+(showPush?"bg-purple-700 text-white":"bg-purple-600 text-white hover:bg-purple-700")}>
+              <span className="text-base">🔔</span> Push Notification
+              <span className="text-xs bg-white bg-opacity-20 px-2 py-0.5 rounded-full font-normal">In-App · Free</span>
+            </button>
+            {/* WhatsApp bulk status */}
             <button onClick={()=>setShowSendStatus(true)} className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 shadow-md hover:shadow-lg transition-all">
               <span className="text-base">💬</span> Send Status
               <span className="text-xs bg-white bg-opacity-20 px-2 py-0.5 rounded-full font-normal">WhatsApp · All Flats</span>
             </button>
-            <button onClick={()=>setShowCompose(!showCompose)} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 transition">
-              <Send size={14}/> Custom Notification
+            {/* Custom WhatsApp/SMS */}
+            <button onClick={()=>{setShowCompose(!showCompose);setShowPush(false);}} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 transition">
+              <Send size={14}/> Custom Message
             </button>
+          </div>
+        )}
+
+        {/* ── Push Notification Panel ── */}
+        {showPush&&isAdmin&&(
+          <div className="bg-white rounded-2xl shadow-lg border border-purple-100">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-purple-50">
+              <div>
+                <h3 className="font-bold text-gray-800 text-base">🔔 Send Push Notification</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Sends to residents who have enabled alerts on their device — completely free</p>
+              </div>
+              <button onClick={()=>setShowPush(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+            </div>
+            <div className="p-6">
+              <PushNotifyPanel projectId={projectId} flats={flats} isAdmin={isAdmin}/>
+            </div>
           </div>
         )}
 
