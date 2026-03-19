@@ -1,57 +1,29 @@
 import { useState } from 'react'
-import { useAuth }         from '../AuthContext'
-import AppContent          from '../components/AppContent'
-import UserApprovalsPanel  from '../components/UserApprovalsPanel'
-import InstallPrompt       from '../components/InstallPrompt'
+import { useAuth }            from '../AuthContext'
+import AppContent             from '../components/AppContent'
+import UserApprovalsPanel     from '../components/UserApprovalsPanel'
+import InstallPrompt          from '../components/InstallPrompt'
 import ForegroundNotification from '../components/ForegroundNotification'
-import NotificationBell    from '../components/NotificationBell'
 import { usePushNotifications } from '../hooks/usePushNotifications'
-
-// Safe wrapper — if push notifications crash for any reason, the page still loads
-function SafeNotificationBell({ uid, projectId, flatNumber, role }) {
-  try {
-    const { permission, notification, loading, requestPermission, setNotification } =
-      usePushNotifications({ uid, projectId, flatNumber, role })
-    return { permission, notification, loading, requestPermission, setNotification }
-  } catch (e) {
-    console.warn('[Push] Hook error (non-fatal):', e)
-    return {
-      permission: 'denied',
-      notification: null,
-      loading: false,
-      requestPermission: async () => {},
-      setNotification: () => {},
-    }
-  }
-}
 
 export default function Dashboard() {
   const { user, role, flatNumber, userName, projectId, logout } = useAuth()
-  const [showUsers, setShowUsers] = useState(false)
+  const [showUsers,     setShowUsers]     = useState(false)
+  const [bellDismissed, setBellDismissed] = useState(false)
 
   const isAdmin    = role === 'admin' || role === 'projectadmin'
   const isResident = role === 'resident'
 
   // Push notifications — fully safe, never crashes Dashboard
   let pushState = {
-    permission: 'default',
-    notification: null,
-    loading: false,
-    requestPermission: async () => {},
-    setNotification: () => {},
+    permission: 'default', notification: null, loading: false,
+    requestPermission: async () => {}, setNotification: () => {},
   }
   try {
-    const result = usePushNotifications({
-      uid:        user?.uid,
-      projectId,
-      flatNumber,
-      role,
-    })
-    pushState = result
+    pushState = usePushNotifications({ uid: user?.uid, projectId, flatNumber, role })
   } catch (e) {
-    console.warn('[Push] usePushNotifications error (non-fatal):', e)
+    console.warn('[Push] non-fatal:', e)
   }
-
   const { permission, notification, loading: notifLoading, requestPermission, setNotification } = pushState
 
   return (
@@ -59,34 +31,26 @@ export default function Dashboard() {
       <ForegroundNotification notification={notification} onDismiss={() => setNotification(null)}/>
       <InstallPrompt />
 
-      {/* Top bar */}
+      {/* ── Top bar ─────────────────────────────────────── */}
       <div className="bg-gray-800 text-white px-4 py-2 flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">
-          <span className="text-gray-300">{user?.email}</span>
-          <span className={`px-2 py-0.5 rounded-full font-bold ${
+          <span className="text-gray-300 truncate max-w-[140px]">{user?.email}</span>
+          <span className={`px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${
             isAdmin    ? 'bg-green-500' :
-            isResident ? 'bg-blue-500'  :
-                         'bg-gray-500'
+            isResident ? 'bg-blue-500'  : 'bg-gray-500'
           }`}>
             {isAdmin ? '🔑 Admin' : isResident ? '🏠 Resident' : '👁️ View Only'}
           </span>
           {isResident && flatNumber && (
-            <span className="text-gray-400">Flat {flatNumber}</span>
+            <span className="text-gray-400 flex-shrink-0">Flat {flatNumber}</span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {!isAdmin && (
-            <NotificationBell
-              permission={permission}
-              onRequestPermission={requestPermission}
-              loading={notifLoading}
-            />
-          )}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {isAdmin && (
             <button onClick={() => setShowUsers(v => !v)}
               className={`px-3 py-1 rounded font-semibold transition ${
-                showUsers ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-gray-600 hover:bg-gray-500'
+                showUsers ? 'bg-indigo-600' : 'bg-gray-600 hover:bg-gray-500'
               }`}>
               👥 Users
             </button>
@@ -97,6 +61,57 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── Notification opt-in banner — residents only ── */}
+      {!isAdmin && permission === 'default' && !bellDismissed && (
+        <div className="bg-purple-600 text-white px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <span className="text-2xl flex-shrink-0">🔔</span>
+            <div className="min-w-0">
+              <p className="font-bold text-sm leading-tight">Enable push notifications</p>
+              <p className="text-purple-200 text-xs mt-0.5">
+                Get alerts for payment updates, meetings and notices — even when the app is closed
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={async () => { await requestPermission() }}
+              disabled={notifLoading}
+              className="px-4 py-2 bg-white text-purple-700 rounded-xl font-bold text-xs hover:bg-purple-50 transition disabled:opacity-60 whitespace-nowrap"
+            >
+              {notifLoading ? 'Enabling...' : '✓ Enable'}
+            </button>
+            <button onClick={() => setBellDismissed(true)}
+              className="text-purple-300 hover:text-white text-xl font-bold leading-none px-1">×</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Enabled confirmation (dismissible) ─────────── */}
+      {!isAdmin && permission === 'granted' && !bellDismissed && (
+        <div className="bg-green-600 text-white px-4 py-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span>✅</span>
+            <p className="text-xs font-semibold">Push notifications active — you'll be alerted for payment updates and notices</p>
+          </div>
+          <button onClick={() => setBellDismissed(true)}
+            className="text-green-300 hover:text-white text-xl font-bold leading-none">×</button>
+        </div>
+      )}
+
+      {/* ── Blocked warning ────────────────────────────── */}
+      {!isAdmin && permission === 'denied' && !bellDismissed && (
+        <div className="bg-gray-700 text-white px-4 py-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex-shrink-0">🔕</span>
+            <p className="text-xs text-gray-300 truncate">Notifications blocked — go to browser Settings → Site Settings → Notifications to enable</p>
+          </div>
+          <button onClick={() => setBellDismissed(true)}
+            className="text-gray-400 hover:text-white text-xl font-bold flex-shrink-0">×</button>
+        </div>
+      )}
+
+      {/* ── Banners ─────────────────────────────────────── */}
       {!isAdmin && !isResident && (
         <div className="bg-yellow-50 border-b border-yellow-300 px-4 py-2 text-center text-xs font-semibold text-yellow-700">
           👁️ You are in <strong>View-Only Mode</strong>. Contact your admin to make changes.
@@ -108,6 +123,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── User approvals ──────────────────────────────── */}
       {isAdmin && showUsers && (
         <div className="bg-gray-50 border-b border-gray-200">
           <div className="max-w-5xl mx-auto px-6 py-6">
@@ -124,6 +140,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── Main app ───────────────────────────────────── */}
       <AppContent
         isAdmin={isAdmin}
         role={role || 'resident'}
@@ -134,4 +151,3 @@ export default function Dashboard() {
     </div>
   )
 }
-

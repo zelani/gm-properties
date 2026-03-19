@@ -8,7 +8,10 @@ import EscalationPanel   from "./EscalationPanel";
 
 
 
-const FLATS = [101,102,103,104,201,202,203,204,301,302,303,304,401,402,403,404,501,502,503,504,601,602];
+// NOTE: FLATS is intentionally not defined globally here.
+// It is computed dynamically inside AppContent from loaded project data
+// and passed as a prop to all sub-page components.
+// DO NOT add a hardcoded FLATS array here.
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const COLORS = ["#3b82f6","#ef4444","#10b981","#f59e0b","#8b5cf6","#ec4899","#06b6d4","#6366f1"];
 const YEARS = Array.from({length:15}, (_,i) => 2026+i);
@@ -344,7 +347,7 @@ function CategoryManager({cats,onClose,onAddCat,onDeleteCat,onRenameCat,onAddSub
 function CsvModal({onClose,onImport,isAdmin}){
   const [preview,setPreview]=useState(null);const [errors,setErrors]=useState([]);const fileRef=useRef(null);
   const csvText=[CSV_HEADERS].concat(CSV_SAMPLES.map(r=>r.map(c=>'"'+String(c)+'"'))).map(r=>r.join(",")).join("\n");
-  function parseFile(file){const reader=new FileReader();reader.onload=e=>{try{const text=e.target.result;const lines=text.trim().split("\n").map(l=>l.trim());const headers=lines[0].split(",").map(h=>h.replace(/^"|"$/g,"").trim().toLowerCase());const rows=lines.slice(1).map(line=>{const vals=[];let cur="",inQ=false;for(let i=0;i<line.length;i++){if(line[i]==='"'){inQ=!inQ;}else if(line[i]===","&&!inQ){vals.push(cur.trim());cur="";}else cur+=line[i];}vals.push(cur.trim());const obj={};headers.forEach((h,i)=>{obj[h]=(vals[i]||"").replace(/^"|"$/g,"").trim();});return obj;}).filter(r=>r["flat_number"]);const errs=[],prev=[];rows.forEach((row,idx)=>{const fn=parseInt(row["flat_number"]);if(!FLATS.includes(fn)){errs.push("Row "+(idx+2)+": Flat "+fn+" not found.");return;}const occ=(row["occupied_by"]||"").toLowerCase();if(!["owner","tenant","vacant"].includes(occ)){errs.push("Row "+(idx+2)+": occupied_by must be Owner/Tenant/Vacant.");return;}prev.push({flatNum:fn,occ,row});});setErrors(errs);setPreview(prev);}catch(err){setErrors(["Parse error: "+err.message]);setPreview(null);}};reader.readAsText(file);}
+  function parseFile(file){const reader=new FileReader();reader.onload=e=>{try{const text=e.target.result;const lines=text.trim().split("\n").map(l=>l.trim());const headers=lines[0].split(",").map(h=>h.replace(/^"|"$/g,"").trim().toLowerCase());const rows=lines.slice(1).map(line=>{const vals=[];let cur="",inQ=false;for(let i=0;i<line.length;i++){if(line[i]==='"'){inQ=!inQ;}else if(line[i]===","&&!inQ){vals.push(cur.trim());cur="";}else cur+=line[i];}vals.push(cur.trim());const obj={};headers.forEach((h,i)=>{obj[h]=(vals[i]||"").replace(/^"|"$/g,"").trim();});return obj;}).filter(r=>r["flat_number"]);const errs=[],prev=[];rows.forEach((row,idx)=>{const fn=parseInt(row["flat_number"]);const occ=(row["occupied_by"]||"").toLowerCase();if(!["owner","tenant","vacant"].includes(occ)){errs.push("Row "+(idx+2)+": occupied_by must be Owner/Tenant/Vacant.");return;}prev.push({flatNum:fn,occ,row});});setErrors(errs);setPreview(prev);}catch(err){setErrors(["Parse error: "+err.message]);setPreview(null);}};reader.readAsText(file);}
   return(
     <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-start justify-center pt-8 px-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-screen overflow-y-auto">
@@ -975,7 +978,7 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
     </div>
   );
 }
-function AuditPage({data, setData, setView, isAdmin, role}){
+function AuditPage({data, setData, setView, isAdmin, role, flats=[]}){
   const userRole = role || "admin";
   const [filter, setFilter] = useState("1y");
   const lastCalYear = TODAY.getFullYear()-1;
@@ -1031,7 +1034,7 @@ function AuditPage({data, setData, setView, isAdmin, role}){
       startYear = year; startMonth = 0; endYear = year; endMonth = 11;
     }
     let collections = 0;
-    FLATS.forEach(f => {
+    flats.forEach(f => {
       for(let y = startYear; y <= endYear; y++) {
         const mStart = (y === startYear) ? startMonth : 0;
         const mEnd = (y === endYear) ? endMonth : 11;
@@ -1063,13 +1066,13 @@ function AuditPage({data, setData, setView, isAdmin, role}){
     for(let m = 0; m < startMonth; m++) { previousMonths.push({year: startYear, month: m}); }
     previousMonths.forEach(({year: y, month: m}) => {
       let maint = 0;
-      FLATS.forEach(f => { const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 5000, paid: false, advance: false}; if(c.paid && !c.advance) maint += c.amount; });
+      flats.forEach(f => { const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 5000, paid: false, advance: false}; if(c.paid && !c.advance) maint += c.amount; });
       const special = data.specialCollections ? data.specialCollections.reduce((sum, sc) => { return sum + sc.entries.filter(e => e.paid && e.paidDate && new Date(e.paidDate).getFullYear() === y && new Date(e.paidDate).getMonth() === m).reduce((s, e) => s + parseFloat(e.amount || 0), 0); }, 0) : 0;
       const exp = data.expenses.filter(e => e.year === y && e.month === m).reduce((s, e) => s + e.amount, 0);
       carryForward += (maint + special - exp);
     });
     let dues = 0;
-    FLATS.forEach(f => { const p = getFlatPending(f); dues += p.overdue; });
+    flats.forEach(f => { const p = getFlatPending(f); dues += p.overdue; });
     const netBalance = carryForward + collections - expenses;
     return { collections, expenses, dues, carryForward, netBalance, startDate: fmtIndian(startDate.toISOString().split("T")[0]), endDate: fmtIndian(endDate.toISOString().split("T")[0]) };
   }
@@ -1205,7 +1208,7 @@ function AuditPage({data, setData, setView, isAdmin, role}){
     </div>
   );
 }
-function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
+function SpecialPage({data,setData,setView,navView,isAdmin,role="admin",flats=[]}){
   const [showNew,setShowNew]=useState(false);
   const [selId,setSelId]=useState(null);
   const [nf,setNf]=useState({year:TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear(),month:TODAY.getMonth(),title:"",purpose:"",targetAmount:"",notes:""});
@@ -1213,7 +1216,7 @@ function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
   function addCollection(){
     if(!nf.title.trim()) return;
     const sc={id:Date.now().toString(),...nf,targetAmount:parseFloat(nf.targetAmount)||0,
-      entries:FLATS.map(f=>({flatNum:f,amount:0,paid:false,paidDate:"",method:"Cash",note:"",receivedFrom:"",receivedDate:TODAY.toISOString().split("T")[0]}))
+      entries:flats.map(f=>({flatNum:f,amount:0,paid:false,paidDate:"",method:"Cash",note:"",receivedFrom:"",receivedDate:TODAY.toISOString().split("T")[0]}))
     };
     setData(p=>({...p,specialCollections:[...(p.specialCollections||[]),sc]}));
     setShowNew(false);setSelId(sc.id);
@@ -1989,7 +1992,7 @@ function SendStatusModal({data,db,projectId,onClose}){
   );
 }
 
-function NotificationsPage({db, projectId, setView, navView, isAdmin, role, data}){
+function NotificationsPage({db, projectId, setView, navView, isAdmin, role, data, flats=[]}){
   const notifCol = () => projectId ? collection(db,"projects",projectId,"notifications") : collection(db,"notifications");
   const [notifications,setNotifications]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -2098,7 +2101,7 @@ function NotificationsPage({db, projectId, setView, navView, isAdmin, role, data
                   <button onClick={()=>setForm({...form,targetAll:true})} className={"px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition "+(form.targetAll?"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-600")}>All Flats</button>
                   <button onClick={()=>setForm({...form,targetAll:false})} className={"px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition "+(!form.targetAll?"border-blue-500 bg-blue-50 text-blue-700":"border-gray-200 text-gray-600")}>Specific Flat</button>
                 </div>
-                {!form.targetAll&&<select value={form.targetFlat} onChange={e=>setForm({...form,targetFlat:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm mt-2"><option value="">— Select flat —</option>{FLATS.map(f=><option key={f} value={f}>Flat {f}</option>)}</select>}
+                {!form.targetAll&&<select value={form.targetFlat} onChange={e=>setForm({...form,targetFlat:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm mt-2"><option value="">— Select flat —</option>{flats.map(f=><option key={f} value={f}>Flat {f}</option>)}</select>}
               </div>
               {form.type==="maintenance_due"&&<div><label className="block text-xs font-bold text-gray-500 mb-1">Amount (₹)</label><input type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="5000" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>}
               <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Custom Message</label><textarea value={form.message} onChange={e=>setForm({...form,message:e.target.value})} rows={2} placeholder="Additional message (optional)..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
@@ -2620,7 +2623,7 @@ function markOwnerSold(flat){
   );
   if(view==="complaints") return <ComplaintsPage db={db} projectId={projectId} setView={setView} navView={view} isAdmin={isAdmin} role={role} flatNumber={flatNumber} currentUser={currentUser}/>;
   if(view==="vendors") return <VendorsPage db={db} projectId={projectId} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
-  if(view==="notifications") return <NotificationsPage db={db} projectId={projectId} setView={setView} navView={view} isAdmin={isAdmin} role={role} data={data}/>;
+  if(view==="notifications") return <NotificationsPage db={db} projectId={projectId} setView={setView} navView={view} isAdmin={isAdmin} role={role} data={data} flats={FLATS}/>;
   if(view==="meetings") return <MeetingsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
   if (!dataLoaded) return (
   <div className="flex items-center justify-center h-screen bg-gray-100">
@@ -2630,10 +2633,10 @@ function markOwnerSold(flat){
     </div>
   </div>
 );
-if(view==="audit") return <AuditPage data={data} setData={setData} setView={setView} isAdmin={isAdmin} role={role}/>;
+if(view==="audit") return <AuditPage data={data} setData={setData} setView={setView} isAdmin={isAdmin} role={role} flats={FLATS}/>;
   if(view==="incidents") return <IncidentsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
   if(view==="watchman") return <WatchmanPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
-  if(view==="special") return <SpecialPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="special") return <SpecialPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role} flats={FLATS}/>;
 
   if(view==="expenseDetail"&&selectedExpEntry){
     const allEntries=selectedExpEntry.mode==="cat"?data.expenses.filter(e=>e.category===selectedExpEntry.category):data.expenses.filter(e=>e.subcategory===selectedExpEntry.subcategory);
