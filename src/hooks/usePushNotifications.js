@@ -29,19 +29,31 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // ── Save token to Firestore ───────────────────────────────
+// Each user document stores a map of device tokens keyed by a device fingerprint
+// This allows multiple devices per user to all receive notifications
 async function saveFCMToken(uid, token, projectId, flatNumber, role, tokenType = 'fcm') {
   if (!uid || !token) return
   try {
+    // Create a stable device key from the token (last 16 chars is unique enough)
+    const deviceKey = 'device_' + token.slice(-16).replace(/[^a-zA-Z0-9]/g, '_')
+
     await setDoc(doc(db, 'fcmTokens', uid), {
-      token,
-      tokenType,   // 'fcm' or 'safari'
+      // Top-level fields for querying
       uid,
       projectId:  projectId  || null,
       flatNumber: flatNumber || null,
       role:       role       || 'resident',
       updatedAt:  serverTimestamp(),
-    })
-    console.log('[Push] Token saved to Firestore:', tokenType)
+      // Map of all device tokens — keyed by device fingerprint
+      // setDoc with merge:true adds this device without removing others
+      [`tokens.${deviceKey}`]: {
+        token,
+        tokenType,
+        updatedAt: new Date().toISOString(),
+      }
+    }, { merge: true })  // ← merge:true is critical — prevents overwriting other devices
+
+    console.log('[Push] Token saved for device:', deviceKey, tokenType)
   } catch (e) {
     console.error('[Push] Failed to save token:', e)
   }

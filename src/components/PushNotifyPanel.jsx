@@ -67,9 +67,30 @@ export default function PushNotifyPanel({ projectId, flats = [], isAdmin }) {
       }
 
       const snap   = await getDocs(tokenQuery)
-      const tokens = snap.docs
-        .map(d => ({ token: d.data().token, tokenType: d.data().tokenType || 'fcm' }))
-        .filter(t => t.token)
+
+      // Each fcmTokens doc has a `tokens` map with one entry per device
+      // Extract ALL device tokens from ALL matching users
+      const tokens = []
+      snap.docs.forEach(d => {
+        const data = d.data()
+        if (data.tokens && typeof data.tokens === 'object') {
+          // New multi-device format
+          Object.values(data.tokens).forEach(deviceToken => {
+            if (deviceToken?.token) {
+              tokens.push({
+                token:     deviceToken.token,
+                tokenType: deviceToken.tokenType || 'fcm',
+              })
+            }
+          })
+        } else if (data.token) {
+          // Legacy single-token format — still works
+          tokens.push({
+            token:     data.token,
+            tokenType: data.tokenType || 'fcm',
+          })
+        }
+      })
 
       if (tokens.length === 0) {
         setResult({ sent: 0, failed: 0, message: 'No devices registered for push notifications in this selection.' })
@@ -85,7 +106,7 @@ export default function PushNotifyPanel({ projectId, flats = [], isAdmin }) {
         data: { type, projectId, flatNumber: flatNum || '' },
       })
 
-      setResult({ ...res, message: `✅ Sent to ${res.sent || tokens.length} device${tokens.length !== 1 ? 's' : ''}.` })
+      setResult({ ...res, message: `✅ Sent to ${res.sent || tokens.length} device${tokens.length !== 1 ? 's' : ''} across ${snap.docs.length} resident${snap.docs.length !== 1 ? 's' : ''}.` })
       setTitle('')
       setBody('')
       setFlatNum('')
