@@ -1,6 +1,4 @@
 // api/send-push.js
-// Vercel Serverless Function — sends FCM (Android/Chrome) and Web Push (Safari iOS)
-
 import { GoogleAuth } from 'google-auth-library'
 import webpush        from 'web-push'
 
@@ -10,7 +8,7 @@ const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY
 
 async function getAccessToken() {
   const raw = process.env.FCM_SERVICE_ACCOUNT_JSON
-  if (!raw) throw new Error('FCM_SERVICE_ACCOUNT_JSON env var not set')
+  if (!raw) throw new Error('FCM_SERVICE_ACCOUNT_JSON not set')
   const serviceAccount = JSON.parse(raw)
   const auth   = new GoogleAuth({ credentials: serviceAccount, scopes: ['https://www.googleapis.com/auth/firebase.messaging'] })
   const client = await auth.getClient()
@@ -18,122 +16,135 @@ async function getAccessToken() {
   return t.token
 }
 
-async function sendFCM(token, title, body, type, data, accessToken) {
-  const payload = {
-    message: {
-      token,
-      notification: { title: title || 'GM Property Hub', body: body || '' },
-      data: { type: type || 'notice' },
-      webpush: {
-        notification: {
-          title: title || 'GM Property Hub',
-          body:  body  || '',
-          icon:  '/icons/icon-192.png',
-          badge: '/icons/icon-192.png',
-        },
-        fcm_options: { link: '/' },
-      },
-    },
-  }
-  console.log('[FCM] Sending to token:', token.slice(0, 20) + '...')
+async function sendFCM(token, title, body, type, accessToken) {
   const response = await fetch(
     `https://fcm.googleapis.com/v1/projects/${PROJECT_ID}/messages:send`,
     {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
+      body: JSON.stringify({
+        message: {
+          token,
+          notification: { title: title || 'GM Property Hub', body: body || '' },
+          data: { type: type || 'notice' },
+          webpush: {
+            notification: { title: title || 'GM Property Hub', body: body || '', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png' },
+            fcm_options: { link: '/' },
+          },
+        },
+      }),
     }
   )
-  const responseText = await response.text()
-  console.log('[FCM] Response:', response.status, responseText.slice(0, 200))
+  const text = await response.text()
+  console.log('[FCM] Status:', response.status, '| Response:', text.slice(0, 150))
   return response.ok
 }
 
 async function sendWebPush(subscriptionStr, title, body, type) {
-  console.log('[WebPush] VAPID_PRIVATE set:', !!VAPID_PRIVATE)
   if (!VAPID_PRIVATE) {
-    console.error('[WebPush] VAPID_PRIVATE_KEY env var not set in Vercel')
+    console.error('[WebPush] ❌ VAPID_PRIVATE_KEY not set in Vercel env vars')
     return false
   }
   try {
-    webpush.setVapidDetails('mailto:admin@gmproperties.com', VAPID_PUBLIC, VAPID_PRIVATE)
-    let subscription
-    try {
+    // Parse the subscription — handle both string and object
+    let subscription = subscriptionStr
+    if (typeof subscriptionStr === 'string') {
       subscription = JSON.parse(subscriptionStr)
-    } catch (e) {
-      console.error('[WebPush] Failed to parse subscription:', subscriptionStr.slice(0, 100))
-      return false
     }
-    console.log('[WebPush] Endpoint:', subscription.endpoint?.slice(0, 60) + '...')
+    console.log('[WebPush] Endpoint:', subscription.endpoint?.slice(0, 80))
+    webpush.setVapidDetails('mailto:admin@gmproperties.com', VAPID_PUBLIC, VAPID_PRIVATE)
     await webpush.sendNotification(
       subscription,
-      JSON.stringify({
-        title: title || 'GM Property Hub',
-        body:  body  || '',
-        icon:  '/icons/icon-192.png',
-        data:  { type },
-      })
+      JSON.stringify({ title: title || 'GM Property Hub', body: body || '', icon: '/icons/icon-192.png', data: { type } })
     )
-    console.log('[WebPush] ✅ Sent successfully')
+    console.log('[WebPush] ✅ Sent!')
     return true
   } catch (err) {
-    console.error('[WebPush] Error:', err.statusCode, err.message)
+    console.error('[WebPush] ❌ Error:', err.statusCode, err.message)
     return false
   }
+}
+
+// Determine if a token is a Safari Web Push subscription
+function isSafariToken(tokenStr, tokenType) {
+  if (tokenType === 'safari') return true
+  if (typeof tokenStr !== 'string') return false
+  const s = tokenStr.trim()
+  // Safari subscriptions are JSON objects with an 'endpoint' field pointing to apple.com
+  if (s.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(s)
+      return typeof parsed.endpoint === 'string'
+    } catch {
+      return false
+    }
+  }
+  return false
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { tokens, title, body, type, data = {} } = req.body
-  console.log('[Push] Received — tokens:', tokens?.length, 'title:', title, 'type:', type)
+  const { tokens, title, body, type } = req.body
+  console.log('[Push] Request — token count:', tokens?.length, '| title:', title, '| type:', type)
 
-  if (!tokens || tokens.length === 0) {
-    return res.status(400).json({ error: 'No tokens provided' })
-  }
+  if (!tokens || tokens.length === 0) return res.status(400).json({ error: 'No tokens' })
+
+  // Log each token for debugging
+  tokens.forEach((t, i) => {
+    const tokenStr = t.token || t  // handle both {token, tokenType} and plain string
+    const tokenType = t.tokenType || 'unknown'
+    const preview = typeof tokenStr === 'string' ? tokenStr.slice(0, 40) : String(tokenStr).slice(0, 40)
+    console.log(`[Push] Token[${i}] type=${tokenType} | starts_with=${preview} | isSafari=${isSafariToken(tokenStr, tokenType)}`)
+  })
 
   try {
-    const hasFCM    = tokens.some(t => t.token?.trim() && !t.token.trim().startsWith('{'))
-    const hasSafari = tokens.some(t => t.token?.trim().startsWith('{') || t.tokenType === 'safari')
-    console.log('[Push] FCM tokens:', hasFCM, '— Safari tokens:', hasSafari)
+    // Separate FCM and Safari tokens
+    const safariTokens = []
+    const fcmTokens    = []
 
-    let accessToken = null
-    if (hasFCM) {
-      try {
-        accessToken = await getAccessToken()
-        console.log('[FCM] Access token obtained ✅')
-      } catch (e) {
-        console.error('[FCM] Access token failed:', e.message)
+    tokens.forEach(t => {
+      const tokenStr  = t.token || t
+      const tokenType = t.tokenType || 'fcm'
+      if (isSafariToken(tokenStr, tokenType)) {
+        safariTokens.push(tokenStr)
+      } else if (typeof tokenStr === 'string' && tokenStr.length > 10) {
+        fcmTokens.push(tokenStr)
       }
-    }
+    })
+
+    console.log('[Push] Safari tokens:', safariTokens.length, '| FCM tokens:', fcmTokens.length)
 
     let sent = 0, failed = 0
 
-    await Promise.all(tokens.map(async (tokenDoc) => {
-      const tokenStr  = tokenDoc.token?.trim()
-      const tokenType = tokenDoc.tokenType || 'fcm'
-      if (!tokenStr) { failed++; return }
-
-      const isSafari = tokenStr.startsWith('{') || tokenType === 'safari'
-      console.log('[Push] Sending via:', isSafari ? 'WebPush/Safari' : 'FCM')
-
-      let ok = false
-      if (isSafari) {
-        ok = await sendWebPush(tokenStr, title, body, type)
-      } else if (accessToken) {
-        ok = await sendFCM(tokenStr, title, body, type, data, accessToken)
-      } else {
-        console.error('[Push] No access token for FCM send')
-      }
-
+    // Send Safari Web Push
+    for (const sub of safariTokens) {
+      const ok = await sendWebPush(sub, title, body, type)
       if (ok) sent++; else failed++
-    }))
+    }
 
-    console.log('[Push] Done — sent:', sent, 'failed:', failed)
+    // Send FCM
+    if (fcmTokens.length > 0) {
+      let accessToken = null
+      try {
+        accessToken = await getAccessToken()
+        console.log('[FCM] Access token obtained')
+      } catch (e) {
+        console.error('[FCM] Auth error:', e.message)
+      }
+      if (accessToken) {
+        for (const token of fcmTokens) {
+          const ok = await sendFCM(token, title, body, type, accessToken)
+          if (ok) sent++; else failed++
+        }
+      }
+    }
+
+    console.log('[Push] Done — sent:', sent, '| failed:', failed)
     return res.status(200).json({ sent, failed })
 
   } catch (err) {
-    console.error('[Push] Fatal error:', err.message)
+    console.error('[Push] Fatal:', err.message)
     return res.status(500).json({ error: err.message })
   }
 }
